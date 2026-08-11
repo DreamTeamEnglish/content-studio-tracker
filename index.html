@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#071a38" />
+  <title>Копилочка Английского — Content Studio Tracker v1.2</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <section id="loginScreen" class="login-screen login-v12">
+    <div class="login-stage login-stage-v12">
+      <div class="hero-panel hero-panel-v12">
+        <div class="hero-art hero-art-v12" aria-hidden="true"></div>
+        <img src="assets/brand-logo.png" class="hero-logo" alt="Копилочка Английского" />
+        <div class="floating-card fc1">GRAMMAR</div>
+        <div class="floating-card fc2">VOCABULARY</div>
+        <div class="floating-card fc3">READING</div>
+        <div class="floating-card fc4">GAMES</div>
+        <div class="hero-copy hero-copy-v12">
+          <span class="eyebrow">PREMIUM ESL WORKSPACE</span>
+          <h2>Создавайте.<br>Планируйте.<br>Анализируйте.</h2>
+          <p>Все материалы, публикации и идеи — в одной творческой студии.</p>
+        </div>
+      </div>
+
+      <div class="login-card-wrap">
+        <div class="login-card ornamental login-card-v12">
+          <div class="gem">◆</div>
+          <div class="login-cabinet">♙ <span>Личный кабинет</span></div>
+          <p class="login-kicker">✦ Моя творческая мастерская ✦</p>
+          <h1>Копилочка Английского</h1>
+          <h3>Content Studio Tracker</h3>
+          <div class="gold-divider"><span>✦</span></div>
+
+          <form id="loginForm">
+            <label>Логин</label>
+            <div class="input-shell"><span>♙</span><input id="loginInput" autocomplete="username" placeholder="Введите логин" /></div>
+            <label>Пароль</label>
+            <div class="input-shell"><span>▣</span><input id="passwordInput" type="password" autocomplete="current-password" placeholder="Введите пароль" /><button id="togglePassword" type="button" class="icon-btn" aria-label="Показать пароль">◉</button></div>
+            <div class="form-row"><label class="check-line"><input type="checkbox" id="rememberMe" /> <span>Запомнить меня</span></label><button class="link-btn" type="button" id="forgotBtn">Забыли пароль?</button></div>
+            <button type="submit" class="btn primary wide">✦ &nbsp; Войти в студию &nbsp; ✦</button>
+            <div class="or-line"><span>✦</span></div>
+            <button type="button" id="demoLoginBtn" class="btn ghost wide">Демо-вход</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="assets/brand-logo.png" alt="Копилочка Английского" />
+        <div><strong>Копилочка<br>Английского</strong><span>DreamTeam English</span></div>
+      </div>
+      <nav id="mainNav" class="nav-list">
+        <button data-page="dashboard" class="nav-item active"><span>⌂</span>Главная</button>
+        <button data-page="materials" class="nav-item"><span>▤</span>Материалы</button>
+        <button data-page="plan" class="nav-item"><span>▦</span>Контент-план</button>
+        <button data-page="publications" class="nav-item"><span>✦</span>Публикации</button>
+        <button data-page="analytics" class="nav-item"><span>▥</span>Аналитика</button>
+        <button data-page="ideas" class="nav-item"><span>☼</span>Банк идей</button>
+        <button data-page="resources" class="nav-item"><span>⌘</span>Ресурсы</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="refreshBtn" class="mini-action">↻ Обновить данные</button>
+        <button id="settingsBtn" class="mini-action">⚙ Настройки</button>
+        <button id="logoutBtn" class="mini-action">↪ Выйти</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow dark">CONTENT STUDIO TRACKER</p>
+          <h1 id="pageTitle">Главная</h1>
+        </div>
+        <div class="header-actions">
+          <span id="modePill" class="mode-pill">Демо</span>
+          <button id="quickAddBtn" class="btn primary">＋ Добавить материал</button>
+          <img src="assets/teacher.png" class="avatar" alt="Профиль" />
+        </div>
+      </header>
+
+      <div id="demoBanner" class="demo-banner hidden">
+        <strong>Демо-режим.</strong> Интерфейс работает на демонстрационных данных. Чтобы подключить вашу базу, вставьте Project URL и Publishable key в <code>config.js</code>.
+      </div>
+
+      <section id="page-dashboard" class="page active">
+        <div class="kpi-grid" id="kpiGrid"></div>
+        <div class="status-board" id="statusBoard"></div>
+        <div class="dashboard-grid">
+          <section class="panel span-2">
+            <div class="panel-head"><div><p class="eyebrow dark">БИБЛИОТЕКА</p><h2>Недавние материалы</h2></div><button class="link-btn go-page" data-go="materials">Смотреть все →</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Название</th><th>Уровень</th><th>Тип</th><th>Формат</th><th>Статус</th></tr></thead><tbody id="recentMaterialsBody"></tbody></table></div>
+          </section>
+          <section class="panel calendar-panel">
+            <div class="panel-head"><div><p class="eyebrow dark">ПЛАН</p><h2 id="calendarTitle">Календарь</h2></div></div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+          </section>
+          <section class="panel span-2">
+            <div class="panel-head"><div><p class="eyebrow dark">ДИНАМИКА</p><h2>Обзор активности</h2></div></div>
+            <div class="mini-metrics" id="miniMetrics"></div>
+          </section>
+          <section class="panel quote-panel">
+            <div class="quote-star">✦</div>
+            <blockquote>Маленькие шаги каждый день создают большой результат.</blockquote>
+            <div class="ink-mark">✒</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page-materials" class="page">
+        <div class="toolbar">
+          <div class="searchbox"><span>⌕</span><input id="materialsSearch" placeholder="Поиск по названию, теме, уровню..." /></div>
+          <select id="materialsStatusFilter"><option value="">Все статусы</option></select>
+          <select id="materialsLevelFilter"><option value="">Все уровни</option></select>
+          <button id="addMaterialBtn" class="btn primary">＋ Новый материал</button>
+        </div>
+        <div id="materialsCards" class="cards-grid"></div>
+      </section>
+
+      <section id="page-plan" class="page">
+        <div class="section-intro"><p>Здесь собираются материалы с плановой датой публикации и запланированные публикации.</p></div>
+        <div id="planList" class="timeline"></div>
+      </section>
+
+      <section id="page-publications" class="page">
+        <div class="toolbar"><div class="section-intro compact"><p>Материал → площадка → дата → статистика.</p></div><button id="addPublicationBtn" class="btn primary">＋ Добавить публикацию</button></div>
+        <div id="publicationsList" class="stack-list"></div>
+      </section>
+
+      <section id="page-analytics" class="page">
+        <div class="toolbar"><div class="section-intro compact"><p>Статистика публикаций и динамика аудитории.</p></div><button id="addAudienceBtn" class="btn primary">＋ Замер аудитории</button></div>
+        <div class="kpi-grid analytics-kpis" id="analyticsKpis"></div>
+        <div class="dashboard-grid">
+          <section class="panel span-2"><div class="panel-head"><div><p class="eyebrow dark">ПОСТЫ</p><h2>Динамика просмотров</h2></div></div><canvas id="viewsChart" width="900" height="300"></canvas></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow dark">АУДИТОРИЯ</p><h2>Прирост</h2></div></div><div id="audienceSummary" class="audience-summary"></div></section>
+          <section class="panel span-3"><div class="panel-head"><div><p class="eyebrow dark">ЛИДЕРЫ</p><h2>Публикации по отклику</h2></div></div><div id="topPosts" class="rank-list"></div></section>
+        </div>
+      </section>
+
+      <section id="page-ideas" class="page">
+        <div class="toolbar"><div class="section-intro compact"><p>Сохраняйте задумки до того, как они превратятся в полноценный материал.</p></div><button id="addIdeaBtn" class="btn primary">＋ Новая идея</button></div>
+        <div id="ideasGrid" class="idea-grid"></div>
+      </section>
+
+      <section id="page-resources" class="page">
+        <div class="toolbar"><div class="section-intro compact"><p>Быстрый доступ к шаблонам, бренду, папкам и полезным сервисам.</p></div><button id="addResourceBtn" class="btn primary">＋ Новый ресурс</button></div>
+        <div id="resourcesGrid" class="resource-grid"></div>
+      </section>
+    </main>
+  </section>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden"></div>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head"><div><p class="eyebrow dark">CONTENT STUDIO</p><h2 id="modalTitle">Добавить</h2></div><button id="modalClose" class="close-btn">×</button></div>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>

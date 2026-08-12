@@ -1,4 +1,4 @@
-/* Content Studio Tracker v1.4 — Supabase Auth, этап A (до закрытия RLS) */
+/* Content Studio Tracker v1.5 — Supabase Auth, этап B (защищённая база + private-ready Storage) */
 (() => {
   const CFG = window.CONTENT_STUDIO_CONFIG || {};
   const hasRealConfig = () => /^https:\/\/.+\.supabase\.co$/i.test(CFG.SUPABASE_URL || '') && /^(sb_publishable_|eyJ)/.test(CFG.SUPABASE_PUBLISHABLE_KEY || '');
@@ -35,7 +35,36 @@
   const platformLabel = v => platformMap[v] || String(v||'—').toUpperCase();
   const toast = msg => { const el=$('#toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2400); };
   const safeFileName = name => String(name||'cover').toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'cover';
-  const materialCover = m => m?.cover_url || 'assets/brand-logo.png';
+  const storageCoverPath = value => {
+    const raw=String(value||'').trim();
+    if(!raw) return null;
+    const publicMarker='/storage/v1/object/public/material-covers/';
+    const signMarker='/storage/v1/object/sign/material-covers/';
+    if(raw.includes(publicMarker)) return decodeURIComponent(raw.split(publicMarker)[1]||'') || null;
+    if(raw.includes(signMarker)) return decodeURIComponent((raw.split(signMarker)[1]||'').split('?')[0]) || null;
+    if(!/^https?:\/\//i.test(raw) && raw.startsWith('materials/')) return raw;
+    return null;
+  };
+  const materialCover = m => {
+    if(m?.cover_display_url) return m.cover_display_url;
+    if(m?.cover_url && !storageCoverPath(m.cover_url)) return m.cover_url;
+    return 'assets/brand-logo.png';
+  };
+  async function hydrateMaterialCovers(){
+    if(!client||!state.materials.length) return;
+    state.materials=await Promise.all(state.materials.map(async m=>{
+      const path=storageCoverPath(m.cover_url);
+      if(!path) return {...m,cover_display_url:m.cover_url||null};
+      try{
+        const {data,error}=await client.storage.from('material-covers').createSignedUrl(path,86400);
+        if(error) throw error;
+        return {...m,cover_storage_path:path,cover_display_url:data?.signedUrl||null};
+      }catch(err){
+        console.warn('Не удалось создать защищённую ссылку на обложку:',err);
+        return {...m,cover_storage_path:path,cover_display_url:null};
+      }
+    }));
+  }
   const publicationHistory = materialId => [...state.publications].filter(p=>p.material_id===materialId).sort((a,b)=>(b.publication_date||'').localeCompare(a.publication_date||''));
   const activePublications = materialId => publicationHistory(materialId).filter(p=>p.status==='published');
   const materialPublication = materialId => activePublications(materialId)[0] || publicationHistory(materialId)[0];
@@ -58,17 +87,14 @@
     const path=`materials/${Date.now()}-${uid}-${stem}.${ext}`;
     const {error}=await client.storage.from('material-covers').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
     if(error) throw error;
-    const {data}=client.storage.from('material-covers').getPublicUrl(path);
-    return data?.publicUrl||null;
+    // В защищённой версии в БД сохраняем путь, а не публичный URL.
+    // На экране он превращается во временную signed URL после авторизации.
+    return path;
   }
 
-  function storagePathFromPublicUrl(url){
-    if(!url||!url.includes('/storage/v1/object/public/material-covers/')) return null;
-    return decodeURIComponent(url.split('/storage/v1/object/public/material-covers/')[1]||'') || null;
-  }
-  async function removeStoredCover(url){
+  async function removeStoredCover(value){
     if(!client) return;
-    const path=storagePathFromPublicUrl(url);
+    const path=storageCoverPath(value);
     if(path) await client.storage.from('material-covers').remove([path]);
   }
 
@@ -101,8 +127,15 @@
     const tables=[['materials','materials'],['publications','publications'],['post_stats','postStats'],['audience_stats','audience'],['ideas','ideas'],['resources','resources']];
     try{
       await Promise.all(tables.map(async ([table,key])=>{ const {data,error}=await client.from(table).select('*'); if(error) throw error; state[key]=data||[]; }));
+      await hydrateMaterialCovers();
       renderAll();
-    }catch(e){ console.error(e); Object.assign(state, JSON.parse(JSON.stringify(demo))); state.mode='demo'; renderAll(); toast('Не удалось прочитать Supabase — включён демо-режим'); }
+    }catch(e){
+      console.error(e);
+      state.materials=[];state.publications=[];state.postStats=[];state.audience=[];state.ideas=[];state.resources=[];
+      state.mode='live';
+      renderAll();
+      toast('Не удалось прочитать защищённую базу. Проверьте вход и соединение.');
+    }
   }
 
   function renderAll(){

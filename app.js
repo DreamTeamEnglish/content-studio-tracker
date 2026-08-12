@@ -1,8 +1,24 @@
-/* Content Studio Tracker v1.3 — рабочая версия, этап 1 */
+/* Content Studio Tracker v1.4 — Supabase Auth, этап A (до закрытия RLS) */
 (() => {
   const CFG = window.CONTENT_STUDIO_CONFIG || {};
   const hasRealConfig = () => /^https:\/\/.+\.supabase\.co$/i.test(CFG.SUPABASE_URL || '') && /^(sb_publishable_|eyJ)/.test(CFG.SUPABASE_PUBLISHABLE_KEY || '');
-  const client = hasRealConfig() && window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_PUBLISHABLE_KEY) : null;
+  const authStorage = {
+    getItem(key){ return sessionStorage.getItem(key) ?? localStorage.getItem(key); },
+    setItem(key,value){
+      const persist = localStorage.getItem('cst_auth_remember') !== '0';
+      const target = persist ? localStorage : sessionStorage;
+      const other = persist ? sessionStorage : localStorage;
+      other.removeItem(key); target.setItem(key,value);
+    },
+    removeItem(key){ localStorage.removeItem(key); sessionStorage.removeItem(key); }
+  };
+  const client = hasRealConfig() && window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_PUBLISHABLE_KEY,{
+    auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:authStorage}
+  }) : null;
+  const AUTH_REDIRECT_URL = `${location.origin}${location.pathname}`;
+  const authLinkParams = new URLSearchParams((location.hash||'').replace(/^#/,''));
+  const authQueryParams = new URLSearchParams(location.search||'');
+  let pendingAuthFlow = authLinkParams.get('type') || authQueryParams.get('type') || null;
 
   const state = { mode: client ? 'live' : 'demo', currentPage:'dashboard', materials:[], publications:[], postStats:[], audience:[], ideas:[], resources:[] };
   const $ = s => document.querySelector(s); const $$ = s => [...document.querySelectorAll(s)];
@@ -380,14 +396,102 @@
 
   function openSettings(){ openModal('Настройки подключения',`<div class="section-intro"><strong>Текущий режим:</strong> ${state.mode==='live'?'Supabase подключён':'Локальный режим'}</div><p>Для опубликованной версии GitHub Pages откройте файл <code>config.js</code> и вставьте два сохранённых значения:</p><pre style="white-space:pre-wrap;background:#f4f1e9;padding:14px;border-radius:10px">SUPABASE_URL: "https://...supabase.co"\nSUPABASE_PUBLISHABLE_KEY: "sb_publishable_..."</pre><p class="meta"><strong>Никогда</strong> не вставляйте сюда Secret key или service_role.</p><div class="modal-actions"><button class="btn primary" id="settingsOk">Понятно</button></div>`);$('#settingsOk').onclick=closeModal; }
 
-  function enterApp(){ $('#loginScreen').classList.add('hidden'); $('#appShell').classList.remove('hidden'); localStorage.setItem('cst_logged','1'); loadAll(); }
-  function logout(){ localStorage.removeItem('cst_logged'); $('#appShell').classList.add('hidden'); $('#loginScreen').classList.remove('hidden'); }
+  let appEntered=false;
+  function showLogin(){
+    appEntered=false;
+    $('#appShell').classList.add('hidden');
+    $('#loginScreen').classList.remove('hidden');
+    $('#passwordInput').value='';
+  }
+  function enterApp(session=null){
+    $('#loginScreen').classList.add('hidden');
+    $('#appShell').classList.remove('hidden');
+    if(session?.user?.email) state.authEmail=session.user.email;
+    if(!appEntered){ appEntered=true; loadAll(); }
+  }
+  function cleanAuthUrl(){
+    if(history.replaceState) history.replaceState({},document.title,location.pathname);
+    pendingAuthFlow=null;
+  }
+  function authErrorText(error){
+    const msg=String(error?.message||'Неизвестная ошибка');
+    if(/invalid login credentials/i.test(msg)) return 'Неверный email или пароль.';
+    if(/email not confirmed/i.test(msg)) return 'Email ещё не подтверждён. Откройте письмо-приглашение.';
+    return msg;
+  }
+  function openPasswordSetup(title='Задайте пароль'){
+    openModal(title,`<form id="setPasswordForm"><div class="section-intro"><p>${pendingAuthFlow==='recovery'?'Введите новый пароль для вашего аккаунта.':'Приглашение подтверждено. Теперь задайте постоянный пароль для входа в Content Studio Tracker.'}</p></div><div class="form-grid"><div class="field full"><label>Новый пароль</label><input id="newAuthPassword" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Не менее 8 символов"></div><div class="field full"><label>Повторите пароль</label><input name="password2" type="password" autocomplete="new-password" minlength="8" required placeholder="Повторите пароль"></div></div><div class="modal-actions"><button type="submit" class="btn primary">Сохранить пароль</button></div></form>`);
+    const form=$('#setPasswordForm');
+    form.onsubmit=e=>{e.preventDefault();submitOnce(form,async()=>{
+      const f=new FormData(form),p1=String(f.get('password')||''),p2=String(f.get('password2')||'');
+      if(p1.length<8){toast('Пароль должен содержать не менее 8 символов');return false;}
+      if(p1!==p2){toast('Пароли не совпадают');return false;}
+      const {data,error}=await client.auth.updateUser({password:p1});
+      if(error){toast('Не удалось сохранить пароль: '+authErrorText(error));return false;}
+      closeModal();cleanAuthUrl();toast('Пароль сохранён ✓');
+      const {data:sd}=await client.auth.getSession();
+      enterApp(sd?.session||null);
+      return !!data?.user;
+    });};
+    setTimeout(()=>$('#newAuthPassword')?.focus(),50);
+  }
+  function openResetPassword(){
+    const current=String($('#loginInput')?.value||'').trim();
+    openModal('Восстановление пароля',`<form id="resetPasswordForm"><div class="section-intro"><p>Введите email вашего аккаунта. Supabase отправит защищённую ссылку для смены пароля.</p></div><div class="form-grid"><div class="field full"><label>Email</label><input type="email" name="email" required autocomplete="email" value="${esc(current)}" placeholder="Ваш email"></div></div><div class="modal-actions"><button type="button" class="btn ghost" id="cancelReset">Отмена</button><button type="submit" class="btn primary">Отправить письмо</button></div></form>`);
+    $('#cancelReset').onclick=closeModal;
+    const form=$('#resetPasswordForm');
+    form.onsubmit=e=>{e.preventDefault();submitOnce(form,async()=>{
+      const email=String(new FormData(form).get('email')||'').trim();
+      const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:AUTH_REDIRECT_URL});
+      if(error){toast('Не удалось отправить письмо: '+authErrorText(error));return false;}
+      closeModal();toast('Письмо для восстановления отправлено ✓');return true;
+    });};
+  }
+  async function logout(){
+    if(client){
+      const {error}=await client.auth.signOut({scope:'local'});
+      if(error){toast('Ошибка выхода: '+authErrorText(error));return;}
+    }
+    showLogin();
+  }
+  async function handleLogin(e){
+    e.preventDefault();
+    if(!client){ toast('Supabase не подключён. Проверьте config.js.'); return; }
+    const email=String($('#loginInput').value||'').trim(),password=$('#passwordInput').value;
+    localStorage.setItem('cst_auth_remember',$('#rememberMe').checked?'1':'0');
+    const btn=e.currentTarget.querySelector('button[type="submit"]'),old=btn.textContent;btn.disabled=true;btn.textContent='Входим…';
+    try{
+      const {data,error}=await client.auth.signInWithPassword({email,password});
+      if(error) throw error;
+      enterApp(data.session);toast('Добро пожаловать ✓');
+    }catch(err){toast(authErrorText(err));}
+    finally{btn.disabled=false;btn.textContent=old;}
+  }
+  function handleAuthEvent(event,session){
+    if(event==='PASSWORD_RECOVERY'){ pendingAuthFlow='recovery'; setTimeout(()=>openPasswordSetup('Новый пароль'),0); return; }
+    if((event==='SIGNED_IN'||event==='INITIAL_SESSION')&&session){
+      if(pendingAuthFlow==='invite'||pendingAuthFlow==='recovery'){setTimeout(()=>openPasswordSetup(pendingAuthFlow==='invite'?'Задайте пароль':'Новый пароль'),0);}
+      else enterApp(session);
+      return;
+    }
+    if(event==='SIGNED_OUT') showLogin();
+  }
+  async function initializeAuth(){
+    if(!client){showLogin();toast('Подключение Supabase не найдено. Проверьте config.js.');return;}
+    client.auth.onAuthStateChange((event,session)=>handleAuthEvent(event,session));
+    const {data,error}=await client.auth.getSession();
+    if(error){showLogin();toast('Ошибка проверки сессии: '+authErrorText(error));return;}
+    if(data?.session){
+      if(pendingAuthFlow==='invite'||pendingAuthFlow==='recovery') openPasswordSetup(pendingAuthFlow==='invite'?'Задайте пароль':'Новый пароль');
+      else enterApp(data.session);
+    }else showLogin();
+  }
 
-  $('#loginForm').onsubmit=e=>{e.preventDefault();const ok=$('#loginInput').value===(CFG.DEMO_LOGIN||'admin')&&$('#passwordInput').value===(CFG.DEMO_PASSWORD||'1234');if(ok)enterApp();else toast('Неверный логин или пароль')};
+  $('#loginForm').onsubmit=handleLogin;
   $('#togglePassword').onclick=()=>{$('#passwordInput').type=$('#passwordInput').type==='password'?'text':'password'};
-  $('#forgotBtn').onclick=()=>toast('Восстановление пароля будет подключено на следующем этапе через Supabase Auth.');
+  $('#forgotBtn').onclick=()=>client?openResetPassword():toast('Supabase не подключён.');
   $('#logoutBtn').onclick=logout; $('#refreshBtn').onclick=()=>{loadAll();toast('Данные обновлены')}; $('#settingsBtn').onclick=openSettings; $('#quickAddBtn').onclick=()=>openMaterialModal(); $('#addMaterialBtn').onclick=()=>openMaterialModal(); $('#addPublicationBtn').onclick=()=>openPublicationModal(); $('#addAudienceBtn').onclick=openAudienceModal; $('#addIdeaBtn').onclick=()=>openIdeaModal(); $('#addResourceBtn').onclick=()=>openResourceModal(); $('#modalClose').onclick=closeModal; $('#modalBackdrop').onclick=closeModal;
   $('#mainNav').onclick=e=>{const b=e.target.closest('[data-page]');if(b)showPage(b.dataset.page)}; $$('.go-page').forEach(b=>b.onclick=()=>showPage(b.dataset.go));
   $('#materialsSearch').oninput=renderMaterials; $('#materialsStatusFilter').onchange=renderMaterials; $('#materialsLevelFilter').onchange=renderMaterials; window.addEventListener('resize',()=>state.currentPage==='analytics'&&drawViewsChart());
-  if(localStorage.getItem('cst_logged')==='1') enterApp();
+  initializeAuth();
 })();

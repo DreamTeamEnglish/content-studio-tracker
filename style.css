@@ -203,3 +203,62 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background-ima
 #loginForm button[type="submit"]:disabled{opacity:.65;cursor:wait}
 .login-card-v12 input[type="email"]{font-family:inherit}
 #setPasswordForm .section-intro,#resetPasswordForm .section-intro{margin-bottom:18px}
+
+/* =========================================================
+   CONTENT STUDIO TRACKER v1.5 FINAL
+   Финальная согласованная рабочая палитра:
+   белый фон + тонкая синяя рамка + золотой hover/focus.
+   Композиция и размеры карточек НЕ меняются.
+   ========================================================= */
+
+/* Рабочая зона — чисто белая, без кремового оттенка */
+html, body{background:#fff;}
+body:before{background-image:none;}
+.app-shell,
+.main-area{background:#fff;}
+
+/* Основные рабочие карточки */
+.material-card,
+.publication-card,
+.idea-card,
+.resource-card,
+.timeline-item{
+  background:#fff;
+  border:1px solid rgba(13,52,94,.72);
+}
+
+/* Карточки материала: фон тела строго белый */
+.material-card__body{background:#fff;}
+
+/* Кнопки внутри карточек без кремового оттенка */
+.action-link,
+.small-btn,
+.publication-summary-btn{
+  background:#fff;
+}
+
+/* Спокойное золотое выделение при наведении/фокусе */
+@media (hover:hover){
+  .card-lift:hover{
+    transform:translateY(-4px);
+    border-color:#c99b37;
+    box-shadow:0 18px 40px rgba(7,30,68,.14),0 0 18px rgba(201,155,55,.10);
+  }
+}
+.card-lift:focus-within{
+  border-color:#c99b37;
+  box-shadow:0 18px 40px rgba(7,30,68,.14),0 0 18px rgba(201,155,55,.10);
+}
+
+/* Снятая публикация остаётся визуально архивной, но не кремовой */
+.publication-card.publication-removed{
+  background:#fafbfc;
+  border-color:#8795a9;
+}
+@media (hover:hover){
+  .publication-card.publication-removed:hover{border-color:#c99b37;}
+}
+
+/* История публикаций тоже остаётся чистой и нейтральной */
+.publication-history-row{background:#fff;}
+.publication-history-row.is-removed{background:#fafbfc;}

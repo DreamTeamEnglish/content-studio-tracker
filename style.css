@@ -129,116 +129,77 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background-ima
 }
 
 /* =========================================================
-   CONTENT STUDIO TRACKER v1.2.1 — UI POLISH
-   1) Экран входа без лишнего скроллинга на desktop
-   2) Белый фон рабочих страниц и карточек + тёмно-синий контур
+   CONTENT STUDIO TRACKER v1.3 — ЭТАП 1
+   Статусы публикаций, история, аватар 1:1, чистый вход
    ========================================================= */
 
-/* Чистая белая рабочая поверхность */
-:root{
-  --cream:#ffffff;
-  --paper:#ffffff;
-  --line:#123a70;
+/* --- Вход: сохраняем габариты v1.2, убираем только демо-кнопку --- */
+.login-card-v12{
+  width:min(620px,100%);
+  min-height:590px;
+  padding:54px 48px 34px;
 }
-html,body{background:#ffffff}
-body:before{
-  background-image:
-    radial-gradient(circle at 20% 10%,rgba(16,63,136,.035),transparent 24%),
-    radial-gradient(circle at 82% 22%,rgba(16,63,136,.025),transparent 26%);
-}
-.app-shell,.main-area{background:#ffffff}
+.login-card-v12 label{margin-top:17px}
+.login-card-v12 .form-row{margin:18px 0 22px}
+.login-card-v12 .login-bottom-frame{margin:22px 0 2px}
 
-/* Карточки и панели: белые, с аккуратным фирменным тёмно-синим контуром */
-.kpi,
-.status-board,
-.panel,
-.material-card,
-.publication-card,
-.idea-card,
-.resource-card,
-.timeline-item,
-.section-intro{
-  background:#ffffff;
-  border-color:rgba(8,42,86,.62);
-}
-.material-card,
-.publication-card,
-.idea-card,
-.resource-card{
-  background:#ffffff;
-  box-shadow:0 10px 28px rgba(7,30,68,.085);
-}
-.action-link{background:#ffffff}
-.quote-panel{background:#ffffff}
-.cal-day{background:#ffffff}
-.cover-upload-field{background:#ffffff;border-color:rgba(8,42,86,.28)}
-.modal-head{background:#ffffff}
-
-/* Hover остаётся спокойным: подъём + золото как акцент */
-@media (hover:hover){
-  .card-lift:hover{
-    transform:translateY(-4px);
-    box-shadow:0 20px 45px rgba(7,30,68,.16),0 0 0 1px rgba(215,166,51,.34);
-    border-color:rgba(215,166,51,.78);
-  }
+/* --- Аватар профиля: источник всегда готовится квадратным 1:1 --- */
+.avatar{
+  width:48px;
+  height:48px;
+  aspect-ratio:1/1;
+  border-radius:50%;
+  object-fit:cover;
+  object-position:center;
 }
 
-/* Desktop login: ровно один viewport, без пустого пространства справа/снизу */
-@media (min-width:901px){
-  html:has(#loginScreen:not(.hidden)),
-  body:has(#loginScreen:not(.hidden)){
-    width:100%;
-    height:100%;
-    overflow:hidden;
-  }
-  .login-v12{
-    position:fixed;
-    inset:0;
-    width:100vw;
-    height:100dvh;
-    min-width:0;
-    min-height:0;
-    overflow:hidden;
-  }
-  .login-stage-v12{
-    width:100%;
-    max-width:100%;
-    height:100%;
-    min-width:0;
-    min-height:0;
-    grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);
-    padding:18px 3vw;
-    gap:3vw;
-    overflow:hidden;
-  }
-  .hero-panel-v12{
-    width:100%;
-    min-width:0;
-    height:calc(100dvh - 36px);
-    min-height:0;
-    max-height:820px;
-  }
-  .login-card-wrap{
-    min-width:0;
-    max-width:100%;
-  }
-  .login-card-v12{
-    max-width:100%;
-  }
+/* --- Материал: компактная история площадок --- */
+.material-publication-summary{margin-top:9px}
+.publication-summary-btn{
+  border-color:#d9c58c;
+  color:#31506f;
+  background:#fffdf7;
+  font-weight:800;
+}
+.publication-summary-btn:hover{border-color:#bd902e;color:#866313}
+
+/* --- Статус «Снято» --- */
+.badge.removed{background:#f1f2f4;color:#667080;border:1px solid #d9dde3}
+.publication-card.publication-removed{background:#fbfbfc;border-color:#dfe2e7}
+.publication-card.publication-removed .publication-thumb{filter:saturate(.72)}
+.removed-date{margin-top:4px;color:#8a6570}
+.remove-pub-btn{border-color:#d8b46c;color:#8b641a;background:#fffaf0}
+
+/* --- Окно «где опубликовано» --- */
+.publication-history-list{display:grid;gap:12px}
+.publication-history-row{
+  display:grid;
+  grid-template-columns:minmax(160px,.8fr) minmax(220px,1.2fr) minmax(230px,1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:14px 15px;
+  border:1px solid #e2ddd2;
+  border-radius:14px;
+  background:#fff;
+}
+.publication-history-row.is-removed{background:#fafbfc;border-color:#dfe2e7}
+.publication-history-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.publication-history-stats{font-size:12px;color:#53647b;white-space:nowrap}
+
+@media(max-width:900px){
+  .publication-history-row{grid-template-columns:1fr;gap:7px}
+  .publication-history-stats{white-space:normal}
 }
 
-/* На невысоких desktop-экранах сохраняем тот же состав элементов,
-   только делаем вертикальные отступы компактнее — без появления скролла. */
-@media (min-width:901px) and (max-height:760px){
-  .login-stage-v12{padding:10px 2.5vw;gap:2.5vw}
-  .hero-panel-v12{height:calc(100dvh - 20px);min-height:0}
-  .login-card-v12{padding:34px 42px 20px}
-  .login-card-v12 h1{font-size:30px}
-  .login-card-v12 h3{font-size:18px}
-  .login-card-v12 .gold-divider{margin:12px 0}
-  .login-card-v12 label{margin-top:9px}
-  .login-card-v12 .input-shell input{height:41px}
-  .login-card-v12 .form-row{margin:10px 0 12px}
-  .login-card-v12 .or-line{margin:9px 0}
-  .hero-copy-v12 h2{font-size:32px}
+@media(max-width:760px){
+  .login-card-v12{min-height:0}
 }
+
+
+/* =========================================================
+   CONTENT STUDIO TRACKER v1.4 — SUPABASE AUTH
+   Только состояния авторизации; размеры login-card не меняем.
+   ========================================================= */
+#loginForm button[type="submit"]:disabled{opacity:.65;cursor:wait}
+.login-card-v12 input[type="email"]{font-family:inherit}
+#setPasswordForm .section-intro,#resetPasswordForm .section-intro{margin-bottom:18px}

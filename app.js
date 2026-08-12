@@ -1,4 +1,4 @@
-/* Content Studio Tracker v1.2 — учебная версия */
+/* Content Studio Tracker v1.3 — рабочая версия, этап 1 */
 (() => {
   const CFG = window.CONTENT_STUDIO_CONFIG || {};
   const hasRealConfig = () => /^https:\/\/.+\.supabase\.co$/i.test(CFG.SUPABASE_URL || '') && /^(sb_publishable_|eyJ)/.test(CFG.SUPABASE_PUBLISHABLE_KEY || '');
@@ -10,16 +10,24 @@
   const fmtDate = d => d ? new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(d+'T12:00:00')) : '—';
   const num = n => new Intl.NumberFormat('ru-RU').format(Number(n||0));
   const labelMap = {
-    idea:'Идея',in_progress:'В работе',review:'На проверке',ready:'Готово',scheduled:'Запланировано',published:'Опубликовано',archived:'Архив',
+    idea:'Идея',in_progress:'В работе',review:'На проверке',ready:'Готово',scheduled:'Запланировано',published:'Опубликовано',removed:'Снято',draft:'Черновик',archived:'Архив',
     worksheet:'Worksheet',reading_pack:'Reading Pack',vocabulary_pack:'Vocabulary Pack',grammar_pack:'Grammar Pack',phonics:'Phonics',speaking:'Speaking',listening:'Listening',writing:'Writing',test:'Test',olympiad:'Olympiad',poster_cards:'Posters & Cards',interactive_game:'Interactive Game',presentation:'Presentation',video_lesson:'Video Lesson',culture_corner:'Culture Corner',holiday_pack:'Holiday Pack',other:'Другое',
     new:'Новая',planned:'Запланирована',converted:'Создан материал',normal:'Обычный',high:'Высокий',low:'Низкий',brand:'Бренд',template:'Шаблон',folder:'Папка',service:'Сервис',reference:'Справочник'
   };
   const label = v => labelMap[v] || v || '—';
+  const platformMap = {vk:'VK',telegram:'Telegram',github_pages:'GitHub Pages',website:'Сайт',other:'Другое'};
+  const platformLabel = v => platformMap[v] || String(v||'—').toUpperCase();
   const toast = msg => { const el=$('#toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2400); };
   const safeFileName = name => String(name||'cover').toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'cover';
   const materialCover = m => m?.cover_url || 'assets/brand-logo.png';
-  const materialPublication = materialId => [...state.publications].filter(p=>p.material_id===materialId).sort((a,b)=>(b.publication_date||'').localeCompare(a.publication_date||''))[0];
-  const materialLatestStat = materialId => { const p=materialPublication(materialId); return p?latestStat(p.id):null; };
+  const publicationHistory = materialId => [...state.publications].filter(p=>p.material_id===materialId).sort((a,b)=>(b.publication_date||'').localeCompare(a.publication_date||''));
+  const activePublications = materialId => publicationHistory(materialId).filter(p=>p.status==='published');
+  const materialPublication = materialId => activePublications(materialId)[0] || publicationHistory(materialId)[0];
+  const materialLatestStat = materialId => {
+    const stats=publicationHistory(materialId).map(p=>latestStat(p.id)).filter(Boolean);
+    if(!stats.length) return null;
+    return stats.reduce((a,x)=>({views:a.views+Number(x.views||0),likes:a.likes+Number(x.likes||0),comments:a.comments+Number(x.comments||0),reposts:a.reposts+Number(x.reposts||0)}),{views:0,likes:0,comments:0,reposts:0});
+  };
 
   async function uploadMaterialCover(file){
     if(!file) return null;
@@ -123,7 +131,10 @@
     const q=($('#materialsSearch')?.value||'').toLowerCase(), status=$('#materialsStatusFilter')?.value||'', level=$('#materialsLevelFilter')?.value||'';
     const arr=state.materials.filter(m=>(!q||[m.title,m.topic,m.level,m.material_type].join(' ').toLowerCase().includes(q))&&(!status||m.status===status)&&(!level||m.level===level));
     $('#materialsCards').innerHTML=arr.map(m=>{
-      const stat=materialLatestStat(m.id);
+      const stat=materialLatestStat(m.id), history=publicationHistory(m.id), active=activePublications(m.id);
+      const pubButton=history.length
+        ? `<button class="small-btn publication-summary-btn" data-material-publications="${esc(m.id)}">${active.length?`Опубликовано: ${active.length}`:`История публикаций: ${history.length}`} ▾</button>`
+        : '';
       return `<article class="material-card card-lift">
         <div class="material-cover"><img src="${esc(materialCover(m))}" alt="Обложка ${esc(m.title)}"><span class="badge ${esc(m.status)} cover-status">${esc(label(m.status))}</span></div>
         <div class="material-card__body">
@@ -133,6 +144,7 @@
           <div class="chip-row material-skills">${(m.skills||[]).map(x=>`<span class="chip">${esc(x.toUpperCase())}</span>`).join('')}</div>
           <div class="material-info-row"><span>📅 ${fmtDate(m.created_date)}</span><span>👁 ${num(stat?.views)} &nbsp; ♥ ${num(stat?.likes)}</span></div>
           <div class="material-topic">${esc(m.topic||'Без темы')}</div>
+          ${pubButton?`<div class="material-publication-summary">${pubButton}</div>`:''}
           <div class="card-actions material-actions">
             ${m.files_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(m.files_url)}">📁 Файлы</a>`:''}
             ${m.live_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(m.live_url)}">🌐 Онлайн</a>`:''}
@@ -143,6 +155,7 @@
       </article>`;
     }).join('')||'<div class="section-intro">Ничего не найдено.</div>';
     $$('#materialsCards .material-cover img').forEach(img=>img.addEventListener('error',()=>{img.src='assets/brand-logo.png'},{once:true}));
+    $$('[data-material-publications]').forEach(b=>b.onclick=()=>openMaterialPublicationsModal(b.dataset.materialPublications));
     $$('[data-edit-material]').forEach(b=>b.onclick=()=>openMaterialModal(state.materials.find(x=>x.id===b.dataset.editMaterial)));
     $$('[data-delete-material]').forEach(b=>b.onclick=()=>{const m=state.materials.find(x=>x.id===b.dataset.deleteMaterial);deleteRecord('materials',b.dataset.deleteMaterial,`материал «${m?.title||'без названия'}» и связанные с ним публикации/статистику`,m?.cover_url)});
   }
@@ -156,17 +169,22 @@
   function renderPublications(){
     $('#publicationsList').innerHTML=[...state.publications].sort((a,b)=>(b.publication_date||'').localeCompare(a.publication_date||'')).map(p=>{
       const m=state.materials.find(x=>x.id===p.material_id),s=latestStat(p.id);
-      return `<article class="publication-card card-lift">
-        <div class="publication-main"><img class="publication-thumb" src="${esc(materialCover(m))}" alt=""><div><h3>${esc(m?.title||'Материал')}</h3><div class="meta">${esc(p.platform?.toUpperCase()||'—')} · ${fmtDate(p.publication_date)}</div></div></div>
+      const removedLine=p.status==='removed'&&p.removed_at?`<div class="meta removed-date">Снято ${fmtDate(p.removed_at)}</div>`:'';
+      const lifecycleAction=p.status==='published'
+        ? `<button class="small-btn remove-pub-btn" data-remove-pub="${esc(p.id)}">↓ Снять</button>`
+        : `<button class="small-btn danger-btn" data-delete-pub="${esc(p.id)}">🗑 Удалить запись</button>`;
+      return `<article class="publication-card card-lift ${p.status==='removed'?'publication-removed':''}">
+        <div class="publication-main"><img class="publication-thumb" src="${esc(materialCover(m))}" alt=""><div><h3>${esc(m?.title||'Материал')}</h3><div class="meta">${esc(platformLabel(p.platform))} · ${fmtDate(p.publication_date)}</div>${removedLine}</div></div>
         <span class="badge ${esc(p.status)}">${esc(label(p.status))}</span>
         <div class="publication-stats"><span>👁 ${num(s?.views)}</span><span>♥ ${num(s?.likes)}</span><span>💬 ${num(s?.comments)}</span><span>↻ ${num(s?.reposts)}</span><small>${s?`замер ${fmtDate(s.snapshot_date)}`:'статистики пока нет'}</small></div>
-        <div class="publication-links">${p.post_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(p.post_url)}">Открыть пост ↗</a>`:'<span class="meta">Ссылка не добавлена</span>'}<div class="card-actions"><button class="small-btn" data-stat-pub="${esc(p.id)}">＋ Статистика</button><button class="small-btn" data-edit-pub="${esc(p.id)}">✎ Изменить</button><button class="small-btn danger-btn" data-delete-pub="${esc(p.id)}">🗑 Удалить</button></div></div>
+        <div class="publication-links">${p.post_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(p.post_url)}">Открыть пост ↗</a>`:'<span class="meta">Ссылка не добавлена</span>'}<div class="card-actions"><button class="small-btn" data-stat-pub="${esc(p.id)}">＋ Статистика</button><button class="small-btn" data-edit-pub="${esc(p.id)}">✎ Изменить</button>${lifecycleAction}</div></div>
       </article>`;
     }).join('')||'<div class="section-intro">Публикаций пока нет.</div>';
     $$('#publicationsList .publication-thumb').forEach(img=>img.addEventListener('error',()=>{img.src='assets/brand-logo.png'},{once:true}));
     $$('[data-stat-pub]').forEach(b=>b.onclick=()=>openPostStatModal(state.publications.find(x=>x.id===b.dataset.statPub)));
     $$('[data-edit-pub]').forEach(b=>b.onclick=()=>openPublicationModal(state.publications.find(x=>x.id===b.dataset.editPub)));
-    $$('[data-delete-pub]').forEach(b=>b.onclick=()=>{const p=state.publications.find(x=>x.id===b.dataset.deletePub),m=state.materials.find(x=>x.id===p?.material_id);deleteRecord('publications',b.dataset.deletePub,`публикацию «${m?.title||'без названия'}» и её статистику`)});
+    $$('[data-remove-pub]').forEach(b=>b.onclick=()=>markPublicationRemoved(b.dataset.removePub));
+    $$('[data-delete-pub]').forEach(b=>b.onclick=()=>{const p=state.publications.find(x=>x.id===b.dataset.deletePub),m=state.materials.find(x=>x.id===p?.material_id);deleteRecord('publications',b.dataset.deletePub,`запись публикации «${m?.title||'без названия'}» вместе с её сохранённой статистикой`)});
   }
 
   function renderAnalytics(){
@@ -245,9 +263,51 @@
   }
 
   function openPublicationModal(p=null){
-    openModal(p?'Изменить публикацию':'Новая публикация',`<form id="pubForm"><div class="form-grid"><div class="field full"><label>Материал *</label><select name="material_id" required><option value="">Выберите материал</option>${state.materials.map(m=>`<option value="${m.id}" ${m.id===p?.material_id?'selected':''}>${esc(m.title)}</option>`).join('')}</select></div><div class="field"><label>Площадка</label><select name="platform"><option value="vk" ${p?.platform==='vk'?'selected':''}>VK</option><option value="telegram" ${p?.platform==='telegram'?'selected':''}>Telegram</option><option value="github_pages" ${p?.platform==='github_pages'?'selected':''}>GitHub Pages</option><option value="website" ${p?.platform==='website'?'selected':''}>Сайт</option><option value="other" ${p?.platform==='other'?'selected':''}>Другое</option></select></div><div class="field"><label>Статус</label><select name="status"><option value="scheduled" ${(!p||p.status==='scheduled')?'selected':''}>Запланировано</option><option value="published" ${p?.status==='published'?'selected':''}>Опубликовано</option><option value="draft" ${p?.status==='draft'?'selected':''}>Черновик</option></select></div><div class="field"><label>Дата публикации</label><input type="date" name="publication_date" value="${esc(p?.publication_date||'')}"></div><div class="field"><label>Ссылка на пост</label><input type="url" name="post_url" value="${esc(p?.post_url||'')}"></div><div class="field full"><label>Заметки</label><textarea name="notes">${esc(p?.notes||'')}</textarea></div></div><div class="modal-actions"><button type="button" class="btn ghost" id="cancelModal">Отмена</button><button type="submit" class="btn primary">Сохранить</button></div></form>`);
+    const today=new Date().toISOString().slice(0,10);
+    openModal(p?'Изменить публикацию':'Новая публикация',`<form id="pubForm">
+      <div class="section-intro"><p><strong>Новый пост / новая ссылка</strong> — создайте новую публикацию. Если вы вернули тот же самый пост по той же ссылке, откройте старую запись и снова выберите «Опубликовано».</p></div>
+      <div class="form-grid">
+        <div class="field full"><label>Материал *</label><select name="material_id" required><option value="">Выберите материал</option>${state.materials.map(m=>`<option value="${m.id}" ${m.id===p?.material_id?'selected':''}>${esc(m.title)}</option>`).join('')}</select></div>
+        <div class="field"><label>Площадка</label><select name="platform"><option value="vk" ${p?.platform==='vk'?'selected':''}>VK</option><option value="telegram" ${p?.platform==='telegram'?'selected':''}>Telegram</option><option value="github_pages" ${p?.platform==='github_pages'?'selected':''}>GitHub Pages</option><option value="website" ${p?.platform==='website'?'selected':''}>Сайт</option><option value="other" ${p?.platform==='other'?'selected':''}>Другое</option></select></div>
+        <div class="field"><label>Статус</label><select id="publicationStatus" name="status"><option value="scheduled" ${(!p||p.status==='scheduled')?'selected':''}>Запланировано</option><option value="published" ${p?.status==='published'?'selected':''}>Опубликовано</option><option value="removed" ${p?.status==='removed'?'selected':''}>Снято</option><option value="draft" ${p?.status==='draft'?'selected':''}>Черновик</option></select></div>
+        <div class="field"><label>Дата публикации</label><input type="date" name="publication_date" value="${esc(p?.publication_date||'')}"></div>
+        <div class="field"><label>Дата снятия</label><input id="removedAtInput" type="date" name="removed_at" value="${esc(p?.removed_at||'')}"><div class="field-hint">Нужна только для статуса «Снято».</div></div>
+        <div class="field full"><label>Ссылка на пост</label><input type="url" name="post_url" value="${esc(p?.post_url||'')}"></div>
+        <div class="field full"><label>Заметки</label><textarea name="notes">${esc(p?.notes||'')}</textarea></div>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn ghost" id="cancelModal">Отмена</button><button type="submit" class="btn primary">Сохранить</button></div>
+    </form>`);
     $('#cancelModal').onclick=closeModal;
-    $('#pubForm').onsubmit=e=>{e.preventDefault();const form=e.currentTarget;submitOnce(form,async()=>{const f=new FormData(form);return await saveRecord('publications',{material_id:f.get('material_id'),platform:f.get('platform'),publication_date:f.get('publication_date')||null,post_url:f.get('post_url')||null,status:f.get('status'),notes:f.get('notes')||null},p?.id)});};
+    const statusSelect=$('#publicationStatus'),removedInput=$('#removedAtInput');
+    statusSelect.onchange=()=>{if(statusSelect.value==='removed'&&!removedInput.value)removedInput.value=today;};
+    $('#pubForm').onsubmit=e=>{e.preventDefault();const form=e.currentTarget;submitOnce(form,async()=>{
+      const f=new FormData(form),status=f.get('status');
+      const rec={material_id:f.get('material_id'),platform:f.get('platform'),publication_date:f.get('publication_date')||null,post_url:f.get('post_url')||null,status,removed_at:status==='removed'?(f.get('removed_at')||today):null,notes:f.get('notes')||null};
+      return await saveRecord('publications',rec,p?.id);
+    });};
+  }
+
+  function openMaterialPublicationsModal(materialId){
+    const m=state.materials.find(x=>x.id===materialId), history=publicationHistory(materialId);
+    if(!m||!history.length)return;
+    const rows=history.map(p=>{
+      const s=latestStat(p.id);
+      return `<div class="publication-history-row ${p.status==='removed'?'is-removed':''}">
+        <div class="publication-history-main"><strong>${esc(platformLabel(p.platform))}</strong><span class="badge ${esc(p.status)}">${esc(label(p.status))}</span></div>
+        <div class="meta">Опубликовано: ${fmtDate(p.publication_date)}${p.status==='removed'&&p.removed_at?` · Снято: ${fmtDate(p.removed_at)}`:''}</div>
+        <div class="publication-history-stats">👁 ${num(s?.views)} &nbsp; ♥ ${num(s?.likes)} &nbsp; 💬 ${num(s?.comments)} &nbsp; ↻ ${num(s?.reposts)}</div>
+        ${p.post_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(p.post_url)}">Открыть публикацию ↗</a>`:'<span class="meta">Ссылка не добавлена</span>'}
+      </div>`;
+    }).join('');
+    openModal(`Публикации — ${m.title}`,`<div class="publication-history-list">${rows}</div><div class="modal-actions"><button class="btn primary" id="historyOk">Закрыть</button></div>`);
+    $('#historyOk').onclick=closeModal;
+  }
+
+  async function markPublicationRemoved(id){
+    const p=state.publications.find(x=>x.id===id),m=state.materials.find(x=>x.id===p?.material_id);
+    if(!p)return false;
+    if(!confirm(`Снять публикацию «${m?.title||'без названия'}»? Запись, ссылка и вся накопленная статистика сохранятся в истории.`))return false;
+    return await saveRecord('publications',{status:'removed',removed_at:new Date().toISOString().slice(0,10)},id);
   }
 
   function openPostStatModal(p){
@@ -277,11 +337,24 @@
     $('#resourceForm').onsubmit=e=>{e.preventDefault();const form=e.currentTarget;submitOnce(form,async()=>{const f=new FormData(form);return await saveRecord('resources',{title:f.get('title'),category:f.get('category'),url:f.get('url')||null,description:f.get('description')||null,is_favorite:f.get('is_favorite')==='true'},r?.id)});};
   }
 
+  function syncDemoMaterialPublicationStatus(materialId){
+    if(!materialId)return;
+    const m=state.materials.find(x=>x.id===materialId);if(!m)return;
+    const hasPublished=state.publications.some(p=>p.material_id===materialId&&p.status==='published');
+    if(hasPublished)m.status='published';
+    else if(m.status==='published')m.status='ready';
+  }
+
   async function saveRecord(table,record,id=null){
     if(!client){
       const map={materials:'materials',publications:'publications',post_stats:'postStats',audience_stats:'audience',ideas:'ideas',resources:'resources'}, key=map[table];
+      const old=table==='publications'&&id?state.publications.find(x=>x.id===id):null;
       if(id){const i=state[key].findIndex(x=>x.id===id);if(i>=0)state[key][i]={...state[key][i],...record};}
       else state[key].push({id:`demo-${Date.now()}`,...record, ...(table==='audience_stats'?{net_change:(record.joined||0)-(record.left_count||0)}:{})});
+      if(table==='publications'){
+        syncDemoMaterialPublicationStatus(old?.material_id);
+        syncDemoMaterialPublicationStatus(record.material_id||old?.material_id);
+      }
       renderAll();toast('Сохранено в демо-режиме');return true;
     }
     try{
@@ -294,18 +367,25 @@
     if(!confirm(`Удалить ${what}? Это действие нельзя отменить.`))return false;
     if(!client){
       const map={materials:'materials',publications:'publications',post_stats:'postStats',audience_stats:'audience',ideas:'ideas',resources:'resources'},key=map[table];
-      state[key]=state[key].filter(x=>x.id!==id);renderAll();toast('Удалено в демо-режиме');return true;
+      const old=table==='publications'?state.publications.find(x=>x.id===id):null;
+      state[key]=state[key].filter(x=>x.id!==id);
+      if(table==='publications'){
+        state.postStats=state.postStats.filter(x=>x.publication_id!==id);
+        syncDemoMaterialPublicationStatus(old?.material_id);
+      }
+      renderAll();toast('Удалено в демо-режиме');return true;
     }
     try{const {error}=await client.from(table).delete().eq('id',id);if(error)throw error;if(coverUrl)await removeStoredCover(coverUrl);await loadAll();toast('Удалено из Supabase ✓');return true;}catch(e){console.error(e);toast('Ошибка удаления: '+e.message);return false;}
   }
 
-  function openSettings(){ openModal('Настройки подключения',`<div class="section-intro"><strong>Текущий режим:</strong> ${state.mode==='live'?'Supabase подключён':'Демо'}</div><p>Для опубликованной версии GitHub Pages откройте файл <code>config.js</code> и вставьте два сохранённых значения:</p><pre style="white-space:pre-wrap;background:#f4f1e9;padding:14px;border-radius:10px">SUPABASE_URL: "https://...supabase.co"\nSUPABASE_PUBLISHABLE_KEY: "sb_publishable_..."</pre><p class="meta"><strong>Никогда</strong> не вставляйте сюда Secret key или service_role.</p><div class="modal-actions"><button class="btn primary" id="settingsOk">Понятно</button></div>`);$('#settingsOk').onclick=closeModal; }
+  function openSettings(){ openModal('Настройки подключения',`<div class="section-intro"><strong>Текущий режим:</strong> ${state.mode==='live'?'Supabase подключён':'Локальный режим'}</div><p>Для опубликованной версии GitHub Pages откройте файл <code>config.js</code> и вставьте два сохранённых значения:</p><pre style="white-space:pre-wrap;background:#f4f1e9;padding:14px;border-radius:10px">SUPABASE_URL: "https://...supabase.co"\nSUPABASE_PUBLISHABLE_KEY: "sb_publishable_..."</pre><p class="meta"><strong>Никогда</strong> не вставляйте сюда Secret key или service_role.</p><div class="modal-actions"><button class="btn primary" id="settingsOk">Понятно</button></div>`);$('#settingsOk').onclick=closeModal; }
 
   function enterApp(){ $('#loginScreen').classList.add('hidden'); $('#appShell').classList.remove('hidden'); localStorage.setItem('cst_logged','1'); loadAll(); }
   function logout(){ localStorage.removeItem('cst_logged'); $('#appShell').classList.add('hidden'); $('#loginScreen').classList.remove('hidden'); }
 
   $('#loginForm').onsubmit=e=>{e.preventDefault();const ok=$('#loginInput').value===(CFG.DEMO_LOGIN||'admin')&&$('#passwordInput').value===(CFG.DEMO_PASSWORD||'1234');if(ok)enterApp();else toast('Неверный логин или пароль')};
-  $('#demoLoginBtn').onclick=enterApp; $('#togglePassword').onclick=()=>{$('#passwordInput').type=$('#passwordInput').type==='password'?'text':'password'}; $('#forgotBtn').onclick=()=>toast('Учебная версия: логин admin, пароль 1234');
+  $('#togglePassword').onclick=()=>{$('#passwordInput').type=$('#passwordInput').type==='password'?'text':'password'};
+  $('#forgotBtn').onclick=()=>toast('Восстановление пароля будет подключено на следующем этапе через Supabase Auth.');
   $('#logoutBtn').onclick=logout; $('#refreshBtn').onclick=()=>{loadAll();toast('Данные обновлены')}; $('#settingsBtn').onclick=openSettings; $('#quickAddBtn').onclick=()=>openMaterialModal(); $('#addMaterialBtn').onclick=()=>openMaterialModal(); $('#addPublicationBtn').onclick=()=>openPublicationModal(); $('#addAudienceBtn').onclick=openAudienceModal; $('#addIdeaBtn').onclick=()=>openIdeaModal(); $('#addResourceBtn').onclick=()=>openResourceModal(); $('#modalClose').onclick=closeModal; $('#modalBackdrop').onclick=closeModal;
   $('#mainNav').onclick=e=>{const b=e.target.closest('[data-page]');if(b)showPage(b.dataset.page)}; $$('.go-page').forEach(b=>b.onclick=()=>showPage(b.dataset.go));
   $('#materialsSearch').oninput=renderMaterials; $('#materialsStatusFilter').onchange=renderMaterials; $('#materialsLevelFilter').onchange=renderMaterials; window.addEventListener('resize',()=>state.currentPage==='analytics'&&drawViewsChart());

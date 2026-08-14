@@ -1,5 +1,5 @@
 /* =========================================================
-   CONTENT STUDIO TRACKER v1.8.1
+   CONTENT STUDIO TRACKER v1.8.2
    ЕДИНЫЙ ПЕРИОД ДЛЯ ВСЕЙ АНАЛИТИКИ
 
    Надстройка поверх рабочего app.js v1.5.
@@ -22,7 +22,7 @@
 
   if (!window.supabase || !validConfig) {
     console.warn(
-      '[Analytics v1.8.1] Supabase config not found.'
+      '[Analytics v1.8.2] Supabase config not found.'
     );
     return;
   }
@@ -108,6 +108,41 @@
           "'": '&#039;'
         })[char]
     );
+
+  function displayError(value) {
+    if (value == null) return '';
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (value instanceof Error) {
+      return value.message;
+    }
+
+    if (typeof value === 'object') {
+      if (typeof value.message === 'string') {
+        return value.message;
+      }
+
+      if (typeof value.error_msg === 'string') {
+        return value.error_msg;
+      }
+
+      if (
+        value.error &&
+        typeof value.error.error_msg === 'string'
+      ) {
+        return value.error.error_msg;
+      }
+
+      try {
+        return JSON.stringify(value);
+      } catch {}
+    }
+
+    return String(value);
+  }
 
   function installStyles() {
     if (
@@ -1236,7 +1271,7 @@
               <p class="period-error-note">
                 Общее число участников
                 временно не удалось обновить:
-                ${esc(audience.warning)}
+                ${esc(displayError(audience.warning))}
               </p>
             `
             : ''
@@ -1900,7 +1935,7 @@
       }
 
       console.error(
-        '[Analytics v1.8.1]',
+        '[Analytics v1.8.2]',
         error
       );
 

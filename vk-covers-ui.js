@@ -47,7 +47,7 @@
 
   let busy = false;
 
-  async function invoke(body) {
+  async function invokeOnce(body) {
     const { data, error } = await client.functions.invoke('vk-sync', { body });
 
     if (error) {
@@ -65,6 +65,40 @@
     }
 
     return data;
+  }
+
+  async function invoke(body, options = {}) {
+    const maxAttempts = Number(options.maxAttempts ?? 4);
+    const retryDelays = [3000, 6000, 10000];
+
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await invokeOnce(body);
+      } catch (error) {
+        lastError = error;
+
+        if (attempt >= maxAttempts) break;
+
+        const waitMs = retryDelays[Math.min(attempt - 1, retryDelays.length - 1)];
+
+        // Важный момент:
+        // если Edge Function успела обработать пачку, но браузер не смог
+        // разобрать служебный ответ Supabase, серверный cover_next_offset
+        // уже сдвинут. Следующий вызов сам продолжит с нового места.
+        setButton(`VK Фото • повтор ${attempt}/3`, true);
+
+        console.warn(
+          `[VK Covers] Temporary call failure. Retry ${attempt}/3 in ${waitMs} ms:`,
+          error
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+
+    throw lastError || new Error('VK cover sync failed after retries.');
   }
 
   function installButton() {
@@ -165,10 +199,15 @@
       let missingPublication = 0;
 
       while (true) {
-        const page = await invoke({
-          mode: 'covers',
-          count: 8
-        });
+        const page = await invoke(
+          {
+            mode: 'covers',
+            count: 4
+          },
+          {
+            maxAttempts: 4
+          }
+        );
 
         imported += Number(page.summary?.cover_imported || 0);
         existing += Number(page.summary?.cover_exists || 0);
@@ -205,17 +244,19 @@
           return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 220));
+        // Более спокойный темп для Supabase/VK:
+        // небольшая пачка + пауза между успешными вызовами.
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       }
     } catch (error) {
       console.error('[VK Covers]', error);
       setButton('VK Фото ⚠', false);
 
       alert(
-        'Загрузка обложек остановлена.\n\n' +
+        'Загрузка обложек остановлена после автоматических повторов.\n\n' +
         `${error instanceof Error ? error.message : String(error)}\n\n` +
-        'Прогресс уже сохранён в Supabase. После устранения причины ' +
-        'следующее нажатие продолжит с сохранённого места.'
+        'Прогресс уже сохранён в Supabase. Ничего заново начинать не нужно: ' +
+        'следующее нажатие продолжит с сохранённого cover_next_offset.'
       );
     } finally {
       busy = false;

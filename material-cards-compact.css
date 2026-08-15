@@ -1,0 +1,97 @@
+/* =========================================================
+   CONTENT STUDIO TRACKER — MATERIAL CARDS COMPACT v1.0
+   Меняет ТОЛЬКО плотность карточек раздела «Материалы».
+
+   НЕ ТРОГАЕТ:
+   - размеры/логику изображения;
+   - material-cover-fit.css;
+   - карточки публикаций;
+   - аналитику;
+   - формы;
+   - Supabase / VK;
+   - цвета и рамки.
+   ========================================================= */
+
+/* Чуть плотнее расстояние между рядами карточек материалов. */
+#materialsCards{
+  gap:14px;
+}
+
+/* Тело карточки: меньше внутренних отступов. */
+#materialsCards .material-card__body{
+  padding:14px 16px 12px;
+}
+
+/* Заголовок: заметно компактнее, но остаётся полностью видимым. */
+#materialsCards .material-card__body h3{
+  font-size:19px;
+  line-height:1.08;
+  margin:0 0 5px;
+}
+
+/* Метаданные сразу под заголовком. */
+#materialsCards .material-meta{
+  margin-bottom:6px;
+  line-height:1.3;
+}
+
+/* Чипы форматов/навыков: меньше воздуха. */
+#materialsCards .material-formats,
+#materialsCards .material-skills{
+  margin:5px 0;
+  gap:5px;
+}
+
+/* Пустые блоки форматов/навыков вообще не занимают место. */
+#materialsCards .material-formats:empty,
+#materialsCards .material-skills:empty{
+  display:none;
+}
+
+/* Сами чипы чуть компактнее только внутри материалов. */
+#materialsCards .material-card .chip{
+  padding:4px 7px;
+  font-size:9px;
+}
+
+/* Дата + просмотры/лайки. */
+#materialsCards .material-info-row{
+  padding-top:7px;
+  margin-top:1px;
+  line-height:1.3;
+}
+
+/* Тема. */
+#materialsCards .material-topic{
+  margin-top:5px;
+  line-height:1.3;
+}
+
+/* Кнопка истории/публикации ближе к основному содержимому. */
+#materialsCards .material-publication-summary{
+  margin-top:6px;
+}
+
+/* Нижние действия остаются внизу, но без лишней пустоты. */
+#materialsCards .material-actions{
+  padding-top:8px;
+  gap:6px;
+}
+
+/* Чуть компактнее только кнопки внутри карточек материалов. */
+#materialsCards .material-actions .small-btn{
+  padding:6px 8px;
+  font-size:10px;
+}
+
+/* На небольших экранах не мельчим дополнительно. */
+@media(max-width:650px){
+  #materialsCards .material-card__body{
+    padding:14px;
+  }
+
+  #materialsCards .material-card__body h3{
+    font-size:19px;
+    line-height:1.1;
+  }
+}

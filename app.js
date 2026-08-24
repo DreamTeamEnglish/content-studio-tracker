@@ -1,4 +1,4 @@
-/* Content Studio Tracker v1.5 — Supabase Auth, этап B (защищённая база + private-ready Storage) */
+/* Content Studio Tracker v1.8 — Hybrid Covers + safe legacy VK Storage cleanup */
 (() => {
   const CFG = window.CONTENT_STUDIO_CONFIG || {};
   const hasRealConfig = () => /^https:\/\/.+\.supabase\.co$/i.test(CFG.SUPABASE_URL || '') && /^(sb_publishable_|eyJ)/.test(CFG.SUPABASE_PUBLISHABLE_KEY || '');
@@ -74,23 +74,86 @@
     return stats.reduce((a,x)=>({views:a.views+Number(x.views||0),likes:a.likes+Number(x.likes||0),comments:a.comments+Number(x.comments||0),reposts:a.reposts+Number(x.reposts||0)}),{views:0,likes:0,comments:0,reposts:0});
   };
 
+  async function decodeCoverImage(file){
+    if (globalThis.createImageBitmap) {
+      try {
+        const bitmap = await createImageBitmap(file, { imageOrientation:'from-image' });
+        return { source:bitmap, width:bitmap.width, height:bitmap.height, close:()=>bitmap.close?.() };
+      } catch {}
+    }
+
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve,reject)=>{
+        const node = new Image();
+        node.onload = ()=>resolve(node);
+        node.onerror = ()=>reject(new Error('Не удалось прочитать изображение.'));
+        node.src = url;
+      });
+      return { source:img, width:img.naturalWidth||img.width, height:img.naturalHeight||img.height, close:()=>URL.revokeObjectURL(url) };
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      throw error;
+    }
+  }
+
+  async function optimizeManualCover(file){
+    if(!file) return null;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Выберите изображение PNG, JPG или WEBP.');
+    if(file.size>6*1024*1024) throw new Error('Исходная обложка слишком большая. Максимум 6 МБ.');
+
+    const decoded = await decodeCoverImage(file);
+    try {
+      const longest = Math.max(decoded.width||0, decoded.height||0);
+      if(!longest) throw new Error('Не удалось определить размер изображения.');
+
+      const scale = Math.min(1, 640 / longest);
+      const width = Math.max(1, Math.round(decoded.width * scale));
+      const height = Math.max(1, Math.round(decoded.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { alpha:true });
+      if(!ctx) throw new Error('Браузер не смог подготовить обложку.');
+      ctx.drawImage(decoded.source, 0, 0, width, height);
+
+      const blob = await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',0.82));
+      if(!blob) {
+        if(longest<=640) return file;
+        throw new Error('Браузер не смог уменьшить обложку.');
+      }
+
+      // Маленький исходный файл не раздуваем без необходимости.
+      if(longest<=640 && blob.size>=file.size) return file;
+
+      const stem=safeFileName(file.name.replace(/\.[^.]+$/,''));
+      return new File([blob],`${stem}.webp`,{type:'image/webp',lastModified:Date.now()});
+    } finally {
+      decoded.close?.();
+    }
+  }
+
   async function uploadMaterialCover(file){
     if(!file) return null;
-    if(!file.type?.startsWith('image/')) throw new Error('Выберите изображение PNG, JPG или WEBP.');
-    if(file.size>6*1024*1024) throw new Error('Обложка слишком большая. Максимум 6 МБ.');
+    const optimized = await optimizeManualCover(file);
     if(!client){
-      return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Не удалось прочитать изображение'));r.readAsDataURL(file);});
+      return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Не удалось прочитать изображение'));r.readAsDataURL(optimized);});
     }
-    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
-    const stem=safeFileName(file.name.replace(/\.[^.]+$/,''));
+    const ext=(optimized.name.split('.').pop()||'webp').toLowerCase();
+    const stem=safeFileName(optimized.name.replace(/\.[^.]+$/,''));
     const uid=(globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));
     const path=`materials/${Date.now()}-${uid}-${stem}.${ext}`;
-    const {error}=await client.storage.from('material-covers').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+    const {error}=await client.storage.from('material-covers').upload(path,optimized,{
+      cacheControl:'31536000',
+      upsert:false,
+      contentType:optimized.type||'image/webp'
+    });
     if(error) throw error;
-    // В защищённой версии в БД сохраняем путь, а не публичный URL.
-    // На экране он превращается во временную signed URL после авторизации.
+    // Для ручной обложки сохраняем приватный Storage path.
+    // Файл заранее уменьшен в браузере до максимум 640 px.
     return path;
   }
+
 
   async function removeStoredCover(value){
     if(!client) return;
@@ -185,7 +248,7 @@
         ? `<button class="small-btn publication-summary-btn" data-material-publications="${esc(m.id)}">${active.length?`Опубликовано: ${active.length}`:`История публикаций: ${history.length}`} ▾</button>`
         : '';
       return `<article class="material-card card-lift">
-        <div class="material-cover"><img src="${esc(materialCover(m))}" alt="Обложка ${esc(m.title)}"><span class="badge ${esc(m.status)} cover-status">${esc(label(m.status))}</span></div>
+        <div class="material-cover"><img src="${esc(materialCover(m))}" alt="Обложка ${esc(m.title)}" loading="lazy" decoding="async" fetchpriority="low"><span class="badge ${esc(m.status)} cover-status">${esc(label(m.status))}</span></div>
         <div class="material-card__body">
           <h3>${esc(m.title)}</h3>
           <div class="meta material-meta">${esc(m.level||'—')} · ${esc(m.age_group||'возраст не указан')} · ${esc(label(m.material_type))}</div>
@@ -223,7 +286,7 @@
         ? `<button class="small-btn remove-pub-btn" data-remove-pub="${esc(p.id)}">↓ Снять</button>`
         : `<button class="small-btn danger-btn" data-delete-pub="${esc(p.id)}">🗑 Удалить запись</button>`;
       return `<article class="publication-card card-lift ${p.status==='removed'?'publication-removed':''}">
-        <div class="publication-main"><img class="publication-thumb" src="${esc(materialCover(m))}" alt=""><div><h3>${esc(m?.title||'Материал')}</h3><div class="meta">${esc(platformLabel(p.platform))} · ${fmtDate(p.publication_date)}</div>${removedLine}</div></div>
+        <div class="publication-main"><img class="publication-thumb" src="${esc(materialCover(m))}" alt="" loading="lazy" decoding="async" fetchpriority="low"><div><h3>${esc(m?.title||'Материал')}</h3><div class="meta">${esc(platformLabel(p.platform))} · ${fmtDate(p.publication_date)}</div>${removedLine}</div></div>
         <span class="badge ${esc(p.status)}">${esc(label(p.status))}</span>
         <div class="publication-stats"><span>👁 ${num(s?.views)}</span><span>♥ ${num(s?.likes)}</span><span>💬 ${num(s?.comments)}</span><span>↻ ${num(s?.reposts)}</span><small>${s?`замер ${fmtDate(s.snapshot_date)}`:'статистики пока нет'}</small></div>
         <div class="publication-links">${p.post_url?`<a class="small-btn action-link" target="_blank" rel="noopener" href="${esc(p.post_url)}">Открыть пост ↗</a>`:'<span class="meta">Ссылка не добавлена</span>'}<div class="card-actions"><button class="small-btn" data-stat-pub="${esc(p.id)}">＋ Статистика</button><button class="small-btn" data-edit-pub="${esc(p.id)}">✎ Изменить</button>${lifecycleAction}</div></div>
@@ -282,7 +345,7 @@
   function openMaterialModal(m=null){
     openModal(m?'Изменить материал':'Новый материал',`<form id="materialForm"><div class="form-grid">
       <div class="field full"><label>Название *</label><input name="title" required value="${esc(m?.title||'')}"></div>
-      <div class="field full cover-upload-field"><label>Обложка / аватарка материала</label><div class="cover-upload-row"><div class="cover-preview"><img id="coverPreview" src="${esc(materialCover(m))}" alt="Предпросмотр обложки"></div><div><input id="coverFile" type="file" name="cover_file" accept="image/png,image/jpeg,image/webp"><p class="field-hint">PNG, JPG или WEBP · до 6 МБ. Если материал уже имеет обложку, новый файл заменит её.</p></div></div></div>
+      <div class="field full cover-upload-field"><label>Обложка / аватарка материала</label><div class="cover-upload-row"><div class="cover-preview"><img id="coverPreview" src="${esc(materialCover(m))}" alt="Предпросмотр обложки"></div><div><input id="coverFile" type="file" name="cover_file" accept="image/png,image/jpeg,image/webp"><p class="field-hint">PNG, JPG или WEBP · исходник до 6 МБ. Перед загрузкой Tracker сам уменьшит ручную обложку до 640 px и, когда это выгоднее, сохранит WebP.</p></div></div></div>
       <div class="field"><label>Уровень</label><select name="level"><option value="">—</option>${options(levels,m?.level)}</select></div>
       <div class="field"><label>Возраст</label><input name="age_group" placeholder="например 8-9" value="${esc(m?.age_group||'')}"></div>
       <div class="field"><label>Тип материала</label><select name="material_type">${options(types,m?.material_type||'worksheet')}</select></div>

@@ -184,23 +184,68 @@
     resources:[{id:'r1',title:'Логотип Копилочка Английского',category:'brand',url:null,description:'Основной фирменный логотип проекта',is_favorite:true}]
   };
 
-  async function loadAll(){
-    if (!client){ Object.assign(state, JSON.parse(JSON.stringify(demo))); state.mode='demo'; renderAll(); return; }
-    state.mode='live';
-    const tables=[['materials','materials'],['publications','publications'],['post_stats','postStats'],['audience_stats','audience'],['ideas','ideas'],['resources','resources']];
-    try{
-      await Promise.all(tables.map(async ([table,key])=>{ const {data,error}=await client.from(table).select('*'); if(error) throw error; state[key]=data||[]; }));
-      await hydrateMaterialCovers();
-      renderAll();
-    }catch(e){
-      console.error(e);
-      state.materials=[];state.publications=[];state.postStats=[];state.audience=[];state.ideas=[];state.resources=[];
-      state.mode='live';
-      renderAll();
-      toast('Не удалось прочитать защищённую базу. Проверьте вход и соединение.');
+  // Защищённая постраничная загрузка: максимум 500 строк за запрос.
+  // Никакой синхронизации с VK, только чтение существующих записей Supabase.
+  let loadAllPromise = null;
+  async function readAllRows(table){
+    const PAGE_SIZE = 500;
+    const MAX_PAGES = 100;
+    const records = [];
+    for(let page = 0; page < MAX_PAGES; page++){
+      const from = page * PAGE_SIZE;
+      const {data, error} = await client.from(table)
+        .select('*')
+        .order('id', {ascending:true})
+        .range(from, from + PAGE_SIZE - 1);
+      if(error) throw new Error(`${table}: ${error.message || String(error)}`);
+      if(!Array.isArray(data)) throw new Error(`${table}: сервер не вернул массив записей`);
+      records.push(...data);
+      if(data.length < PAGE_SIZE) return records;
+      // Интервал между страницами, чтобы не создавать всплески запросов.
+      await new Promise(resolve => setTimeout(resolve, 150));
     }
+    throw new Error(`${table}: достигнут безопасный предел выгрузки; данные не показаны частично`);
   }
-
+  async function loadAll(){
+    if(!client){
+      Object.assign(state, JSON.parse(JSON.stringify(demo)));
+      state.mode = 'demo';
+      renderAll();
+      return true;
+    }
+    // Два быстрых нажатия «Обновить» не запускают две загрузки.
+    if(loadAllPromise) return loadAllPromise;
+    loadAllPromise = (async () => {
+      state.mode = 'live';
+      const tables = [
+        ['materials','materials'],
+        ['publications','publications'],
+        ['post_stats','postStats'],
+        ['audience_stats','audience'],
+        ['ideas','ideas'],
+        ['resources','resources']
+      ];
+      try {
+        const next = {};
+        // Последовательно: не создаём лавину параллельных запросов.
+        for(const [table,key] of tables){
+          next[key] = await readAllRows(table);
+        }
+        // Применяем всё вместе, чтобы не смешивать старые и новые страницы.
+        for(const [,key] of tables) state[key] = next[key];
+        await hydrateMaterialCovers();
+        renderAll();
+        return true;
+      } catch(error){
+        console.error('Ошибка безопасной загрузки трекера:', error);
+        toast('Не удалось загрузить все записи. Предыдущие данные не изменены.');
+        return false;
+      } finally {
+        loadAllPromise = null;
+      }
+    })();
+    return loadAllPromise;
+  }
   function renderAll(){
     $('#modePill').textContent=state.mode==='live'?'Supabase ✓':'Демо';
     $('#modePill').className='mode-pill';
@@ -586,7 +631,7 @@
   $('#loginForm').onsubmit=handleLogin;
   $('#togglePassword').onclick=()=>{$('#passwordInput').type=$('#passwordInput').type==='password'?'text':'password'};
   $('#forgotBtn').onclick=()=>client?openResetPassword():toast('Supabase не подключён.');
-  $('#logoutBtn').onclick=logout; $('#refreshBtn').onclick=()=>{loadAll();toast('Данные обновлены')}; $('#settingsBtn').onclick=openSettings; $('#quickAddBtn').onclick=()=>openMaterialModal(); $('#addMaterialBtn').onclick=()=>openMaterialModal(); $('#addPublicationBtn').onclick=()=>openPublicationModal(); $('#addAudienceBtn').onclick=openAudienceModal; $('#addIdeaBtn').onclick=()=>openIdeaModal(); $('#addResourceBtn').onclick=()=>openResourceModal(); $('#modalClose').onclick=closeModal; $('#modalBackdrop').onclick=closeModal;
+  $('#logoutBtn').onclick=logout; $('#refreshBtn').onclick=async()=>{if(await loadAll())toast('Все данные обновлены ✓')}; $('#settingsBtn').onclick=openSettings; $('#quickAddBtn').onclick=()=>openMaterialModal(); $('#addMaterialBtn').onclick=()=>openMaterialModal(); $('#addPublicationBtn').onclick=()=>openPublicationModal(); $('#addAudienceBtn').onclick=openAudienceModal; $('#addIdeaBtn').onclick=()=>openIdeaModal(); $('#addResourceBtn').onclick=()=>openResourceModal(); $('#modalClose').onclick=closeModal; $('#modalBackdrop').onclick=closeModal;
   $('#mainNav').onclick=e=>{const b=e.target.closest('[data-page]');if(b)showPage(b.dataset.page)}; $$('.go-page').forEach(b=>b.onclick=()=>showPage(b.dataset.go));
   $('#materialsSearch').oninput=renderMaterials; $('#materialsStatusFilter').onchange=renderMaterials; $('#materialsLevelFilter').onchange=renderMaterials; window.addEventListener('resize',()=>state.currentPage==='analytics'&&drawViewsChart());
   initializeAuth();
